@@ -1,6 +1,6 @@
 import { supabase } from "../../../lib/supabase";
 
-const FREE_DAILY_LIMIT = 2;
+const FREE_DAILY_LIMIT = 20;
 
 const SYSTEM_PROMPT = `You are an aggressive, high-retention video marketing director for faceless YouTube and TikTok channels.
 You are forbidden from writing conversational paragraphs, introductions, or explanations.
