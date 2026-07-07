@@ -15,7 +15,7 @@ export async function POST(req) {
   try {
     const { prompt, email, imageSpeed, wantImagePrompts } = await req.json();
 
-    if (!prompt || !email) {
+    await supabase.from("prompt_logs").insert({ email, prompt }).catch(() => {});
       return Response.json({ error: "missing_fields", message: "prompt and email are required" }, { status: 400 });
     }
 
