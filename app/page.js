@@ -368,6 +368,6 @@ orter" or "more mysterious"' style={{ width: "100%", boxSizing: "border-box", ba
       </div>
 
       <style>{`@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-6px)}} @keyframes sweep{0%{left:0%}50%{left:65%}100%{left:0%}}`}</style>
-    </div>
-  );
-}
+    <);
+
+  }
