@@ -351,3 +351,23 @@ export default function Home() {
               <div style={{ marginTop: 16, background: "#1C1C1E", border: "1px solid #2C2C2E", borderRadius: 14, padding: 16 }}>
                 <p style={{ fontWeight: 600, fontSize: 14, margin: "0 0 10px" }}>Want different names?</p>
                 <input value={refineInput} onChange={(e) => setRefineInput(e.target.value)} placeholder='e.g. "make them sh
+orter" or "more mysterious"' style={{ width: "100%", boxSizing: "border-box", background: "#000", border: "1px solid #2C2C2E", borderRadius: 12, color: "#fff", padding: 12, fontSize: 14, outline: "none", marginBottom: 10 }} />
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button onClick={() => generateNames(refineInput)} style={{ flex: 1, background: "#5E5CE6", color: "#fff", border: "none", borderRadius: 12, padding: 12, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Refine</button>
+                  <button onClick={() => generateNames(null)} style={{ flex: 1, background: "#1C1C1E", border: "1px solid #2C2C2E", color: "#fff", borderRadius: 12, padding: 12, fontSize: 14, cursor: "pointer" }}>🔄 Refresh</button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#000", borderTop: "1px solid #1C1C1E", display: "flex" }}>
+        <button onClick={() => setTab("chat")} style={{ flex: 1, background: "none", border: "none", color: tab === "chat" ? "#5E5CE6" : "#8E8E93", padding: "12px 0", cursor: "pointer", fontSize: 22 }}>💬</button>
+        <button onClick={() => setTab("names")} style={{ flex: 1, background: "none", border: "none", color: tab === "names" ? "#5E5CE6" : "#8E8E93", padding: "12px 0", cursor: "pointer", fontSize: 22 }}>✨</button>
+      </div>
+
+      <style>{`@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-6px)}} @keyframes sweep{0%{left:0%}50%{left:65%}100%{left:0%}}`}</style>
+    </div>
+  );
+}
