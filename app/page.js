@@ -10,7 +10,8 @@ const ONBOARDING = [
 ];
 
 export default function Home() {
-  const [stage, setStage] = useState("signup");
+  const [stage, setStage] = useState("checking");
+  const [isLogin, setIsLogin] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -27,10 +28,31 @@ export default function Home() {
   const [channelNames, setChannelNames] = useState([]);
   const [channelLoading, setChannelLoading] = useState(false);
   const [refineInput, setRefineInput] = useState("");
-  const [lastDesc, setLastDesc] = useState("");
+  const [savedEmail, setSavedEmail] = useState("");
+  const [savedName, setSavedName] = useState("");
   const bottomRef = useRef(null);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
+  useEffect(() => {
+    const storedEmail = localStorage.getItem("cinetix_email");
+    const storedName = localStorage.getItem("cinetix_name");
+    if (storedEmail) {
+      setSavedEmail(storedEmail);
+      setSavedName(storedName || "");
+      setEmail(storedEmail);
+      setName(storedName || "");
+      setStage("app");
+      setMessages([{
+        role: "assistant",
+        content: `Welcome back${storedName ? " " + storedName : ""}! 👋\n\nDescribe your video idea and I'll write you:\n• The full script\n• Camera & visual directions\n• The exact image prompts you need\n\nWhat's your video idea?`,
+      }]);
+    } else {
+      setStage("signup");
+    }
+  }, []);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
 
   function speakText(text, index) {
     window.speechSynthesis.cancel();
@@ -39,6 +61,15 @@ export default function Home() {
     utterance.onend = () => setSpeaking(null);
     window.speechSynthesis.speak(utterance);
     setSpeaking(index);
+  }
+
+  function logout() {
+    localStorage.removeItem("cinetix_email");
+    localStorage.removeItem("cinetix_name");
+    setStage("signup");
+    setMessages([]);
+    setEmail("");
+    setName("");
   }
 
   async function handleSignup() {
@@ -67,18 +98,54 @@ export default function Home() {
     }
   }
 
+  async function handleLogin() {
+    setError("");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 6) {
+      setError("Enter a valid email and password");
+      return;
+    }
+    setStage("loading");
+    try {
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.message || "Incorrect email or password");
+        setStage("signup");
+        return;
+      }
+      localStorage.setItem("cinetix_email", data.email);
+      localStorage.setItem("cinetix_name", data.name || "");
+      setName(data.name || "");
+      setSavedEmail(data.email);
+      enterApp(data.name || "");
+    } catch (e) {
+      setError("Could not reach the server");
+      setStage("signup");
+    }
+  }
+
   function handleOnboardAnswer(key, value) {
     const updated = { ...onboardAnswers, [key]: value };
     setOnboardAnswers(updated);
     if (onboardStep < ONBOARDING.length - 1) {
       setOnboardStep(onboardStep + 1);
     } else {
-      setStage("app");
-      setMessages([{
-        role: "assistant",
-        content: `Hey${name ? " " + name : ""}! 👋 I'm Cinetix — your AI video director.\n\nDescribe your video idea and I'll write you:\n• The full script\n• Camera & visual directions\n• The exact image prompts you need\n\nWhat's your video idea?`,
-      }]);
+      localStorage.setItem("cinetix_email", email);
+      localStorage.setItem("cinetix_name", name);
+      enterApp(name);
     }
+  }
+
+  function enterApp(userName) {
+    setStage("app");
+    setMessages([{
+      role: "assistant",
+      content: `Hey${userName ? " " + userName : ""}! 👋 I'm Cinetix — your AI video director.\n\nDescribe your video idea and I'll write you:\n• The full script\n• Camera & visual directions\n• The exact image prompts you need\n\nWhat's your video idea?`,
+    }]);
   }
 
   async function sendMessage() {
@@ -88,10 +155,11 @@ export default function Home() {
     setInput("");
     setLoading(true);
     try {
+      const userEmail = email || savedEmail;
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: input.trim(), email, imageSpeed, wantImagePrompts: true }),
+        body: JSON.stringify({ prompt: input.trim(), email: userEmail, imageSpeed, wantImagePrompts: true }),
       });
       const data = await res.json();
       if (res.status === 429) {
@@ -124,7 +192,6 @@ export default function Home() {
       });
       const data = await res.json();
       setChannelNames(data.names || []);
-      setLastDesc(channelDesc);
     } catch (e) {}
     setChannelLoading(false);
     setRefineInput("");
@@ -138,18 +205,30 @@ export default function Home() {
     optionBtn: { width: "100%", background: "#1C1C1E", border: "1px solid #2C2C2E", borderRadius: 12, color: "#fff", padding: 14, fontSize: 15, cursor: "pointer", marginBottom: 10, textAlign: "left" },
   };
 
+  if (stage === "checking") return (
+    <div style={{ ...s.wrap, alignItems: "center", justifyContent: "center" }}>
+      <p style={{ color: "#8E8E93", fontSize: 14 }}>Loading...</p>
+    </div>
+  );
+
   if (stage === "signup") return (
     <div style={{ ...s.wrap, alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div style={{ width: "100%", maxWidth: 400 }}>
         <p style={{ fontWeight: 700, fontSize: 26, textAlign: "center", margin: "0 0 4px" }}>Cinetix</p>
         <p style={{ color: "#8E8E93", fontSize: 14, textAlign: "center", margin: "0 0 24px" }}>AI video director for faceless creators</p>
         <div style={s.card}>
-          <p style={{ fontWeight: 600, fontSize: 16, margin: "0 0 16px" }}>Create your account</p>
-          <input style={s.input} type="text" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
+          <p style={{ fontWeight: 600, fontSize: 16, margin: "0 0 16px" }}>{isLogin ? "Welcome back" : "Create your account"}</p>
+          {!isLogin && <input style={s.input} type="text" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />}
           <input style={s.input} type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} />
           <input style={{ ...s.input, marginBottom: 16 }} type="password" placeholder="Password (6+ characters)" value={password} onChange={(e) => setPassword(e.target.value)} />
-          <button style={s.btn} onClick={handleSignup}>Create account</button>
+          <button style={s.btn} onClick={isLogin ? handleLogin : handleSignup}>{isLogin ? "Log in" : "Create account"}</button>
           {error && <p style={{ color: "#E24B4A", fontSize: 13, marginTop: 10, textAlign: "center" }}>{error}</p>}
+          <p style={{ textAlign: "center", marginTop: 16, fontSize: 13, color: "#8E8E93" }}>
+            {isLogin ? "Don't have an account? " : "Already have an account? "}
+            <span onClick={() => { setIsLogin(!isLogin); setError(""); }} style={{ color: "#5E5CE6", cursor: "pointer" }}>
+              {isLogin ? "Sign up" : "Log in"}
+            </span>
+          </p>
         </div>
       </div>
     </div>
@@ -188,19 +267,22 @@ export default function Home() {
     <div style={s.wrap}>
       <div style={{ padding: "14px 16px", borderBottom: "1px solid #1C1C1E", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ fontWeight: 700, fontSize: 17 }}>Cinetix</span>
-        {tab === "chat" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ color: "#8E8E93", fontSize: 12 }}>Image every</span>
-            {[2, 3, 5].map((sp) => (
-              <button key={sp} onClick={() => setImageSpeed(sp)} style={{ background: imageSpeed === sp ? "#5E5CE6" : "#1C1C1E", border: "1px solid #2C2C2E", color: "#fff", borderRadius: 8, padding: "4px 10px", fontSize: 12, cursor: "pointer" }}>{sp}s</button>
-            ))}
-          </div>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {tab === "chat" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ color: "#8E8E93", fontSize: 11 }}>img every</span>
+              {[2, 3, 5].map((sp) => (
+                <button key={sp} onClick={() => setImageSpeed(sp)} style={{ background: imageSpeed === sp ? "#5E5CE6" : "#1C1C1E", border: "1px solid #2C2C2E", color: "#fff", borderRadius: 8, padding: "3px 8px", fontSize: 11, cursor: "pointer" }}>{sp}s</button>
+              ))}
+            </div>
+          )}
+          <button onClick={logout} style={{ background: "none", border: "1px solid #2C2C2E", color: "#8E8E93", borderRadius: 8, padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>Log out</button>
+        </div>
       </div>
 
       {tab === "chat" && (
         <>
-          <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", paddingBottom: 100 }}>
+          <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", paddingBottom: 120 }}>
             {messages.map((msg, i) => (
               <div key={i} style={{ marginBottom: 20, display: "flex", flexDirection: "column", alignItems: msg.role === "user" ? "flex-end" : "flex-start" }}>
                 {msg.role === "paywall" ? (
@@ -221,10 +303,8 @@ export default function Home() {
                     </div>
                     {msg.role === "assistant" && (
                       <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-                        <button onClick={() => speakText(msg.content, i)} style={{ background: "none", border: "none", cursor: "pointer", color: speaking === i ? "#5E5CE6" : "#8E8E93", fontSize: 18, padding: 0 }}>
-                          {speaking === i ? "⏹" : "🔊"}
-                        </button>
-                        <button onClick={() => { navigator.clipboard?.writeText(msg.content); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#8E8E93", fontSize: 14, padding: 0 }}>📋</button>
+                        <button onClick={() => speakText(msg.content, i)} style={{ background: "none", border: "none", cursor: "pointer", color: speaking === i ? "#5E5CE6" : "#8E8E93", fontSize: 18, padding: 0 }}>{speaking === i ? "⏹" : "🔊"}</button>
+                        <button onClick={() => navigator.clipboard?.writeText(msg.content)} style={{ background: "none", border: "none", cursor: "pointer", color: "#8E8E93", fontSize: 16, padding: 0 }}>📋</button>
                       </div>
                     )}
                   </>
@@ -240,7 +320,7 @@ export default function Home() {
             )}
             <div ref={bottomRef} />
           </div>
-          <div style={{ position: "fixed", bottom: 60, left: 0, right: 0, padding: "12px 16px", background: "#000", borderTop: "1px solid #1C1C1E" }}>
+          <div style={{ position: "fixed", bottom: 56, left: 0, right: 0, padding: "10px 16px", background: "#000", borderTop: "1px solid #1C1C1E" }}>
             <div style={{ display: "flex", gap: 10, alignItems: "flex-end", background: "#1C1C1E", borderRadius: 20, padding: "8px 8px 8px 16px", border: "1px solid #2C2C2E" }}>
               <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }} placeholder="Describe your video idea..." rows={1} style={{ flex: 1, background: "none", border: "none", color: "#fff", fontSize: 15, outline: "none", resize: "none", fontFamily: "inherit", padding: 0, lineHeight: 1.5 }} />
               <button onClick={sendMessage} disabled={loading || !input.trim()} style={{ background: input.trim() ? "#5E5CE6" : "#2C2C2E", border: "none", borderRadius: "50%", width: 34, height: 34, cursor: input.trim() ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -252,14 +332,13 @@ export default function Home() {
       )}
 
       {tab === "names" && (
-        <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", paddingBottom: 100 }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", paddingBottom: 80 }}>
           <p style={{ fontWeight: 600, fontSize: 18, margin: "0 0 6px" }}>Channel Name Generator</p>
           <p style={{ color: "#8E8E93", fontSize: 13, margin: "0 0 20px" }}>Describe your channel and get 8 name ideas instantly</p>
           <textarea value={channelDesc} onChange={(e) => setChannelDesc(e.target.value)} placeholder="e.g. Faceless motivation channel for young people trying to make money..." rows={3} style={{ width: "100%", boxSizing: "border-box", background: "#1C1C1E", border: "1px solid #2C2C2E", borderRadius: 12, color: "#fff", padding: 12, fontSize: 14, outline: "none", resize: "none", fontFamily: "inherit", marginBottom: 10 }} />
           <button onClick={() => generateNames(null)} disabled={channelLoading || !channelDesc.trim()} style={{ width: "100%", background: "#5E5CE6", color: "#fff", border: "none", borderRadius: 12, padding: 13, fontSize: 15, fontWeight: 600, cursor: "pointer", marginBottom: 16 }}>
             {channelLoading ? "Generating..." : "Generate names"}
           </button>
-
           {channelNames.length > 0 && (
             <>
               {channelNames.map((n, i) => (
@@ -271,23 +350,4 @@ export default function Home() {
               ))}
               <div style={{ marginTop: 16, background: "#1C1C1E", border: "1px solid #2C2C2E", borderRadius: 14, padding: 16 }}>
                 <p style={{ fontWeight: 600, fontSize: 14, margin: "0 0 10px" }}>Want different names?</p>
-                <input value={refineInput} onChange={(e) => setRefineInput(e.target.value)} placeholder='e.g. "make them shorter" or "more mysterious"' style={{ width: "100%", boxSizing: "border-box", background: "#000", border: "1px solid #2C2C2E", borderRadius: 12, color: "#fff", padding: 12, fontSize: 14, outline: "none", marginBottom: 10 }} />
-                <div style={{ display: "flex", gap: 10 }}>
-                  <button onClick={() => generateNames(refineInput)} style={{ flex: 1, background: "#5E5CE6", color: "#fff", border: "none", borderRadius: 12, padding: 12, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Refine</button>
-                  <button onClick={() => generateNames(null)} style={{ flex: 1, background: "#1C1C1E", border: "1px solid #2C2C2E", color: "#fff", borderRadius: 12, padding: 12, fontSize: 14, cursor: "pointer" }}>🔄 Refresh</button>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#000", borderTop: "1px solid #1C1C1E", display: "flex" }}>
-        <button onClick={() => setTab("chat")} style={{ flex: 1, background: "none", border: "none", color: tab === "chat" ? "#5E5CE6" : "#8E8E93", padding: "12px 0", cursor: "pointer", fontSize: 22 }}>💬</button>
-        <button onClick={() => setTab("names")} style={{ flex: 1, background: "none", border: "none", color: tab === "names" ? "#5E5CE6" : "#8E8E93", padding: "12px 0", cursor: "pointer", fontSize: 22 }}>✨</button>
-      </div>
-
-      <style>{`@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-6px)}} @keyframes sweep{0%{left:0%}50%{left:65%}100%{left:0%}}`}</style>
-    </div>
-  );
-                }
+                <input value={refineInput} onChange={(e) => setRefineInput(e.target.value)} placeholder='e.g. "make them sh
