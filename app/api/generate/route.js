@@ -1,8 +1,9 @@
-import { supabase } from "../../../lib/supabase";
+export async function POST(req) {
+  try {
+    const { prompt, email, imageSpeed, wantImagePrompts } = await req.json();
+    if (!prompt || !email) return Response.json({ error: "missing_fields" }, { status: 400 });
 
-const FREE_DAILY_LIMIT = 200;
-
-const SYSTEM_PROMPT = `You are an aggressive, high-retention video marketing director for faceless YouTube and TikTok channels.
+    const SYSTEM_PROMPT = `You are an aggressive, high-retention video marketing director for faceless YouTube and TikTok channels.
 You are forbidden from writing conversational paragraphs, introductions, or explanations.
 Respond ONLY in this exact format, nothing else:
 
@@ -10,46 +11,6 @@ Respond ONLY in this exact format, nothing else:
 <framing choices, lighting notes, b-roll cuts, performance directions>
 ===AUDIO_SCRIPT===
 <raw script, dynamic hooks, word-for-word dialogue, punchy sentences>`;
-
-export async function POST(req) {
-  try {
-    const { prompt, email, imageSpeed, wantImagePrompts } = await req.json();
-
-    if (!prompt || !email) {
-      return Response.json({ error: "missing_fields", message: "prompt and email are required" }, { status: 400 });
-    }
-
-    const { data: userRow } = await supabase
-      .from("user_access")
-      .select("has_premium_pass, pass_expires_at")
-      .eq("email", email)
-      .maybeSingle();
-
-    const hasPremium = userRow?.has_premium_pass && userRow.pass_expires_at && new Date(userRow.pass_expires_at) > new Date();
-
-    if (!hasPremium) {
-      const today = new Date().toISOString().slice(0, 10);
-      const { data: trackerRow } = await supabase
-        .from("free_daily_tracker")
-        .select("id, hit_counter")
-        .eq("email", email)
-        .eq("log_date", today)
-        .maybeSingle();
-
-      const currentCount = trackerRow?.hit_counter ?? 0;
-
-      if (currentCount >= FREE_DAILY_LIMIT) {
-        return Response.json({ error: "limit_reached", message: "Daily free allowance used" }, { status: 429 });
-      }
-
-      if (trackerRow) {
-        await supabase.from("free_daily_tracker").update({ hit_counter: currentCount + 1 }).eq("id", trackerRow.id);
-      } else {
-        await supabase.from("free_daily_tracker").insert({ email, log_date: today, hit_counter: 1 });
-      }
-    }
-
-    await supabase.from("prompt_logs").insert({ email, prompt }).catch(() => {});
 
     const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
@@ -75,24 +36,19 @@ export async function POST(req) {
 
     const groqData = await groqRes.json();
     const rawText = groqData?.choices?.[0]?.message?.content ?? "";
-
     const visualFrame = rawText.split("===AUDIO_SCRIPT===")[0].replace("===VISUAL_FRAME===", "").trim();
     const audioScript = rawText.split("===AUDIO_SCRIPT===")[1]?.trim() ?? "";
 
     let imagePrompts = null;
-
     if (wantImagePrompts && audioScript) {
       const speed = imageSpeed || 3;
-      const wordsPerSecond = 2.5;
       const words = audioScript.split(/\s+/).filter(Boolean);
-      const wordsPerImage = Math.round(wordsPerSecond * speed);
+      const wordsPerImage = Math.round(2.5 * speed);
       const chunks = [];
-
       for (let i = 0; i < words.length; i += wordsPerImage) {
         chunks.push(words.slice(i, i + wordsPerImage).join(" "));
       }
-
-      const imagePromptRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      const imgRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -101,16 +57,15 @@ export async function POST(req) {
         body: JSON.stringify({
           model: "llama-3.3-70b-versatile",
           messages: [
-            { role: "system", content: `You write short, concrete image-generation prompts for a faceless video editor. You receive a numbered list of script chunks, one per scene. Respond with ONLY a numbered list, one image prompt per chunk, same count and same order as given, no extra text, no introduction.` },
+            { role: "system", content: "You write short concrete image-generation prompts for a faceless video editor. Respond with ONLY a numbered list, one image prompt per chunk, same count and order as given, no extra text." },
             { role: "user", content: chunks.map((c, i) => `${i + 1}. ${c}`).join("\n") },
           ],
           max_tokens: 2000,
           temperature: 0.7,
         }),
       });
-
-      if (imagePromptRes.ok) {
-        const imgData = await imagePromptRes.json();
+      if (imgRes.ok) {
+        const imgData = await imgRes.json();
         const imgText = imgData?.choices?.[0]?.message?.content ?? "";
         imagePrompts = imgText.split("\n").map((l) => l.replace(/^\d+\.\s*/, "").trim()).filter(Boolean);
       }
